@@ -6,6 +6,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.util.ArrayList;
 
 public class TelloLib {
      
@@ -111,13 +112,25 @@ public class TelloLib {
 		    return sbTemp.toString().getBytes(); 
 		}
     }
-    
-    public enum TelloResponse {
+
+	private class TelloCommunicator extends Thread {
+
+    	public void sendData(DatagramPacket dpTemp) {
+    		
+		}
+
+    	public void disconnectWithTello() {
+
+		}
+	}
+
+	public enum TelloResponse {
 		RES_OK					("ok"),
 		RES_ERROR				("error"),
 		RES_NOT_CONNECTED_YET,
 		RES_INVALID_CONNECTION,
 		RES_FAILED_TO_SEND_A_COMMAND,
+		RES_QUEUE_HAS_NOTHING,
 		;
 		
 		private final String m_strPrefix;
@@ -159,7 +172,7 @@ public class TelloLib {
 		m_dsSender = null;
 		m_dsReceiver = null;
     }
-    
+
     public boolean connectToDrone() {
 		try {
 		    m_dsSender = new DatagramSocket();
@@ -229,4 +242,58 @@ public class TelloLib {
         }
         return trResult;
     }
+
+    private ArrayList<DatagramPacket> m_aldCommands = null;
+
+    public synchronized void addCommandToQueue(TelloCommand emCmd, String...strArgs) {
+		byte[] baCommand;
+
+		if (m_aldCommands == null) {
+			m_aldCommands = new ArrayList<>();
+		}
+
+		synchronized (m_aldCommands) {
+			try {
+				baCommand = emCmd.getCommand(strArgs);
+				m_aldCommands.add(new DatagramPacket(baCommand, baCommand.length));
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public int getQueueSize() {
+    	if (m_aldCommands == null) {
+    		return 0;
+		}
+
+    	return m_aldCommands.size();
+	}
+
+	public TelloResponse playQueue()
+	{
+		TelloResponse trResult = TelloResponse.RES_ERROR;
+
+		if (m_aldCommands == null) {
+			return TelloResponse.RES_QUEUE_HAS_NOTHING;
+		}
+
+		if (m_dsSender != null) {
+			if (m_dsSender.isConnected()) {
+				try {
+					for (DatagramPacket dpItem : m_aldCommands) {
+						m_dsSender.send(dpItem);
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+					trResult = TelloResponse.RES_FAILED_TO_SEND_A_COMMAND;
+				}
+			} else {
+				trResult = TelloResponse.RES_INVALID_CONNECTION;
+			}
+		} else {
+			trResult = TelloResponse.RES_NOT_CONNECTED_YET;
+		}
+		return trResult;
+	}
 }
